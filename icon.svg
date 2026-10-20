@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>Model Native Search</title>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="#4266d5"/>
+  <g fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round">
+    <circle cx="28" cy="27" r="17"/>
+    <ellipse cx="28" cy="27" rx="7" ry="17"/>
+    <path d="M12 21h32M12 33h32M40 40l12 12"/>
+  </g>
+  <rect x="29" y="43" width="27" height="14" rx="7" fill="#b7f0d9"/>
+  <circle cx="48" cy="50" r="4.5" fill="#245a4c"/>
+</svg>

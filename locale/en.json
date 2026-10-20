@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Model Native Search",
+    "description": "Prefer the current model’s native web search and use standard search when it fails."
+  }
+}

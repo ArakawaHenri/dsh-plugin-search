@@ -1,0 +1,48 @@
+{
+  "name": "dsh-plugin-search",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Prefer native web search per model by default, falling back to standard search on failure",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ArakawaHenri/dsh-plugin-search.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ArakawaHenri/dsh-plugin-search/issues"
+  },
+  "homepage": "https://github.com/ArakawaHenri/dsh-plugin-search#readme",
+  "peerDependencies": {
+    "@deepseek-ai/schemastery": "~3.18.5"
+  },
+  "devDependencies": {
+    "@deepseek-ai/schemastery": "~3.18.5"
+  },
+  "engines": {
+    "dsh": "0.2.1-rc.2"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "locale/*.json",
+    "icon.svg",
+    "lib/*.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "for f in index.js lib/*.js test/*.test.js; do node --check \"$f\" || exit 1; done"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
