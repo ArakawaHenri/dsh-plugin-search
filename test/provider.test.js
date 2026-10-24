@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { format } from 'node:util';
 
 import { NativePreferringSearchProvider, PROVIDER_ID } from '../lib/provider.js';
 import { resolveConfig } from '../lib/config.js';
@@ -32,6 +33,7 @@ function makeProvider({
 	let currentContext = context;
 	const standardCalls = [];
 	const nativeCalls = [];
+	const logs = [];
 	const standard = {
 		id: 'deepseek-official',
 		available: () => true,
@@ -56,7 +58,7 @@ function makeProvider({
 			return undefined;
 		},
 		web: { searchProviders: new Map([['deepseek-official', standard]]) },
-		logger: { info: () => {} },
+		logger: { info: (...args) => logs.push(format(...args)) },
 	};
 	const provider = new NativePreferringSearchProvider(ctx, resolveConfig({ timeoutMs: 5000, ...config }), {
 		fetchImpl: async (url, init) => {
@@ -74,6 +76,7 @@ function makeProvider({
 		ctx,
 		standardCalls,
 		nativeCalls,
+		logs,
 		setContext: (value) => { currentContext = value; },
 	};
 }
@@ -92,8 +95,9 @@ for (const [api, body, endpoint] of [
 	['openai-responses', RESPONSES_OK, 'http://host/v1/responses'],
 ]) {
 	test(`default-enabled ${api} model sends session model and returns native sources`, async () => {
-		const { provider, nativeCalls, standardCalls } = makeProvider({
+		const { provider, nativeCalls, standardCalls, logs } = makeProvider({
 			providers: { gw: { api, baseURL: 'http://host/v1' } },
+			config: { debug: true },
 			answer: { status: 200, body },
 		});
 		const result = await provider.search({ query: 'q', model: 'not-the-session-model' });
@@ -105,6 +109,7 @@ for (const [api, body, endpoint] of [
 		assert.equal(nativeCalls[0].url, endpoint);
 		assert.equal(nativeCalls[0].body.model, 'native-model');
 		assert.equal(standardCalls.length, 0);
+		assert.deepEqual(logs, []);
 	});
 }
 
@@ -126,13 +131,16 @@ test('two models on the same provider choose independently and explicit false us
 });
 
 test('a route-wide opt-out uses standard search for every model', async () => {
-	const { provider, setContext, nativeCalls, standardCalls } = makeProvider({
-		config: { routes: { gw: { nativeSearch: false } } },
+	const { provider, setContext, nativeCalls, standardCalls, logs } = makeProvider({
+		config: { debug: true, routes: { gw: { nativeSearch: false } } },
 	});
 	setContext({ provider: 'gw', model: 'native-model' });
 	await provider.search({ query: 'q' });
 	assert.equal(nativeCalls.length, 0);
 	assert.equal(standardCalls.length, 1);
+	assert.equal(logs.length, 1);
+	assert.match(logs[0], /\[model-disabled\]/u);
+	assert.doesNotMatch(logs[0], /native-failed/u);
 });
 
 test('an explicit api override upgrades a chat-completions route to native search', async () => {
@@ -174,7 +182,7 @@ for (const [label, overrides] of [
 	['body timeout', { fetchImpl: async () => ({ ok: true, text: async () => { throw new DOMException('timed out', 'TimeoutError'); } }) }],
 ]) {
 	test(`native ${label} falls back to standard provider`, async () => {
-		const { provider, nativeCalls, standardCalls } = makeProvider(overrides);
+		const { provider, nativeCalls, standardCalls, logs } = makeProvider(overrides);
 		const request = { query: 'q', maxResults: 4 };
 		const signal = new AbortController().signal;
 		assert.deepEqual(await provider.search(request, signal), {
@@ -185,8 +193,50 @@ for (const [label, overrides] of [
 		assert.equal(standardCalls.length, 1);
 		assert.equal(standardCalls[0].request, request);
 		assert.equal(standardCalls[0].signal, signal);
+		assert.deepEqual(logs, []);
 	});
 }
+
+test('debug logs native HTTP failures with route, model, fallback provider, and error details', async () => {
+	const { provider, standardCalls, logs } = makeProvider({
+		config: { debug: true },
+		answer: { status: 503, body: { error: { message: 'search temporarily unavailable' } } },
+	});
+	await provider.search({ query: 'q' });
+	assert.equal(standardCalls.length, 1);
+	assert.equal(logs.length, 1);
+	for (const detail of [
+		'route "gw"', 'model "native-model"', 'ordinary search "deepseek-official"',
+		'[native-failed]', 'http://host/v1/messages', 'HTTP 503',
+		'search temporarily unavailable', 'WEB_PROVIDER_ERROR',
+	]) {
+		assert.ok(logs[0].includes(detail), `missing log detail: ${detail}`);
+	}
+});
+
+test('debug preserves the underlying transport cause behind fetch failed', async () => {
+	const cause = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:3425'), { code: 'ECONNREFUSED' });
+	const { provider, logs } = makeProvider({
+		config: { debug: true },
+		fetchImpl: async () => { throw new TypeError('fetch failed', { cause }); },
+	});
+	await provider.search({ query: 'q' });
+	assert.equal(logs.length, 1);
+	assert.match(logs[0], /fetch failed/u);
+	assert.match(logs[0], /connect ECONNREFUSED 127\.0\.0\.1:3425/u);
+});
+
+test('debug retains the native failure when the standard provider is missing', async () => {
+	const { provider, ctx, logs } = makeProvider({
+		config: { debug: true },
+		answer: { status: 429, body: { error: 'rate limited' } },
+	});
+	ctx.web.searchProviders.clear();
+	await assert.rejects(provider.search({ query: 'q' }), (error) => error.code === 'WEB_PROVIDER_CONFIGURED_MISSING');
+	assert.equal(logs.length, 1);
+	assert.match(logs[0], /HTTP 429/u);
+	assert.match(logs[0], /rate limited/u);
+});
 
 for (const phase of ['fetch', 'body']) {
 	test(`native ${phase} timeout falls back with the original un-aborted caller signal`, async () => {
@@ -284,8 +334,8 @@ for (const [mode, config] of [['native', {}], ['ordinary', DISABLED]]) {
 test('cancellation during native dispatch propagates without fallback', async () => {
 	const controller = new AbortController();
 	const reason = new Error('cancelled during request');
-	const { provider, nativeCalls, standardCalls } = makeProvider({
-		config: ENABLED,
+	const { provider, nativeCalls, standardCalls, logs } = makeProvider({
+		config: { ...ENABLED, debug: true },
 		fetchImpl: async (_url, { signal }) => new Promise((_resolve, reject) => {
 			signal.addEventListener('abort', () => reject(signal.reason), { once: true });
 			queueMicrotask(() => controller.abort(reason));
@@ -297,6 +347,7 @@ test('cancellation during native dispatch propagates without fallback', async ()
 	);
 	assert.equal(nativeCalls.length, 1);
 	assert.equal(standardCalls.length, 0);
+	assert.deepEqual(logs, []);
 });
 
 for (const [label, context] of [

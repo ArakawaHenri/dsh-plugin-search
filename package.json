@@ -14,13 +14,13 @@
   },
   "homepage": "https://github.com/ArakawaHenri/dsh-plugin-search#readme",
   "peerDependencies": {
-    "@deepseek-ai/schemastery": "~3.18.5"
+    "@deepseek-ai/schemastery": "^3.18.5"
   },
   "devDependencies": {
     "@deepseek-ai/schemastery": "~3.18.5"
   },
   "engines": {
-    "dsh": "0.2.1-rc.2"
+    "dsh": ">=0.2.1-rc.2"
   },
   "exports": {
     ".": "./index.js",

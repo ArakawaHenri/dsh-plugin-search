@@ -18,7 +18,11 @@ Native search makes at most one request. A failure goes directly to standard sea
 
 ## Installation
 
+DSH `>=0.2.1-rc.2` is accepted, including later prereleases under DSH's version-range check. There is no upper version cap: later releases can load the plugin as long as the web provider, initiating-session, loader, and credential interfaces it uses remain compatible.
+
 When installed through DSH's plugin manager, this plugin uses the host's `@deepseek-ai/schemastery`. It is declared as a peer dependency because DSH resolves bundled packages for externally linked plugins through `peerDependencies`; an ordinary dependency requires a separate local installation.
+
+The Schemastery peer range is `^3.18.5`, allowing compatible 3.x updates. The development dependency and lockfile retain the existing test baseline.
 
 For a local checkout, add `link:/absolute/path/to/dsh-plugin-search` through DSH's plugin manager so DSH registers it as a linked plugin. With DSH's `autoInstallPeers: false` setting, pnpm can report the host-provided peer as missing; DSH supplies it when loading the registered plugin.
 
@@ -62,8 +66,10 @@ Explicit route settings override the corresponding discovered fields. Setting `a
 | `anthropicVersion` | `'2023-06-01'` | `anthropic-version` header for Messages requests |
 | `messagesToolType` | `'web_search_20250305'` | Server-tool type for Messages |
 | `responsesToolType` | `'web_search'` | Server-tool type for Responses |
-| `debug` | `false` | Log standard-search and fallback reasons |
+| `debug` | `false` | Log the route, model, standard provider, and selection reason; native failures include the error, stack, and nested causes |
 | `routes` | `{}` | Per-route overrides (`api`, `nativeSearch`, `baseURL`, `path`, `apiKey`, `apiKeyEnv`, `requireApiKey`, `headers`, `maxTokens`, `maxUses`, `timeoutMs`, `toolType`, `toolChoice`, `anthropicVersion`, `models`) |
+
+Set `debug: true` in the plugin configuration and reload the plugin to diagnose fallbacks. A native failure log includes its HTTP status and provider message, timeout, credential or parsing error, or underlying transport cause when available. The native failure is logged even if the configured standard provider is missing. Successful native searches and caller cancellations do not produce fallback logs.
 
 ## Development
 
